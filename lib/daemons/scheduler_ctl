@@ -1,0 +1,32 @@
+#!/usr/bin/env ruby
+require 'rubygems'
+require 'daemons'
+require 'yaml'
+require 'erb'
+
+class Hash
+  def with_symbols!
+    self.keys.each{|key| self[key.to_s.to_sym] = self[key] }; self
+  end
+end
+
+options = YAML.load(
+  ERB.new(
+  IO.read(
+  File.dirname(__FILE__) + "/../../config/daemons.yml"
+  )).result).with_symbols!
+options[:dir_mode] = options[:dir_mode].to_sym
+
+pids = Array.new
+puts "Removing old pid"
+`rm -f #{File.dirname(__FILE__)}/../../log/scheduler.rb*.pid`
+puts "Attempting to kill off old processes"
+`ps auxww | grep scheduler.rb | grep -v grep`.split(/\n/).each do |line|
+  pids << line.split(/\s+/)[1]
+end
+pids.each do |process|
+  puts "Attempting to kill #{process}"
+  `kill -9 #{process} > /dev/null 2>&1` if process =~ /\d+/
+end
+
+Daemons.run File.dirname(__FILE__) + '/scheduler.rb', options

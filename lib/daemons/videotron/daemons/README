@@ -1,0 +1,37 @@
+Step 1. Modify /usr/local/nginx/conf/nginx.conf file
+
+Confirm the following is in the nginx.conf file. The lines marked with * are the new lines
+--------
+    server {
+        listen       80;
+        server_name  localhost;
+
+        #charset koi8-r;
+
+        #access_log  logs/host.access.log  main;
+*        location /session/status {
+*           proxy_pass http://127.0.0.1:3001;
+*        }
+
+--------
+
+Step 2. run the add_vtron script.
+cd /sunrise/www/realworx-rails/current/
+ruby script/runner script/add_vtron
+
+Step 3. Add clearpath role to user who needs it.
+
+Step 4. Point ClearPath URL to the SVGR Server used to get sessions.  If you are just testing at Sunrise this would be http://localhost:3002
+
+Step 5. Start clearpath.rb
+
+Do the following for testing at sunrise
+Step 6. Start fake_svgr.rb
+
+Step 7. Go to livetrace. Click on start clearpath button
+
+Step 8. Run something like this URL: This is to generate a baseline: http://10.0.0.164:3001/trace/new?site_name=FL8&session_id=1307621654921
+
+Step 9. Run something like this URL: This is to generate a device trace, you can do this several times: http://10.0.0.164:3001/trace/new?site_name=FL8&session_id=1307621654921&device_name="bob"
+
+Step 10. Run something like this URL: This will close the session: http://10.0.0.164:3001/close/session?session_id=1307621654921
