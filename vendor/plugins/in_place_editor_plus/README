@@ -1,6 +1,0 @@
-Example
-<%= in_place_editor_field :book , :title %>
-<%= in_place_editor_field :book , :title ,{},{:collection => ["Kevin","Tony"]}%>
-<%= in_place_editor_field :book , :title ,{},{:collection => [[0,"Kevin"],[1,"Tony"]]}%>
-
-
