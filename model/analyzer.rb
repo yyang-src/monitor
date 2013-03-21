@@ -1,2 +1,2 @@
-class Analyzer < Base
+class Analyzers < Base
 end
