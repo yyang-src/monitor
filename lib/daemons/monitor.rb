@@ -4,7 +4,6 @@ $:.push(File.expand_path(File.dirname(__FILE__))+"/../../vendor/sunrise/lib")
 $:.push(File.expand_path(File.dirname(__FILE__))+"/../../")
 $:.push(File.expand_path(File.dirname(__FILE__)))
 #Dir.chdir(File.dirname(__FILE__)+"/../..")
-require File.dirname(__FILE__) + "/../../config/environment"
 require 'common'
 require 'config_files'
 require 'utils'

@@ -2,15 +2,14 @@
 
 $:.push(File.expand_path(File.dirname(__FILE__))+"/../../vendor/sunrise/lib")
 $:.push(File.expand_path(File.dirname(__FILE__))+"/../../")
-
-require File.dirname(__FILE__) + "/../../config/environment"
+require 'lib/mini_record/mini_record'
 require 'common'
 require 'config_files'
 require 'webrick/httprequest'
 require 'webrick/httpresponse'
 require 'webrick/config'
 require 'net/http'
-ENV["RAILS_ENV"] ||= "development"
+ENV["RAILS_ENV"] ||= "production"
 $is_debug = false #debug mode switch
 debug_conf = "#{File.dirname(__FILE__)}/debug_conf.ini"
 begin
@@ -69,10 +68,10 @@ class Master
 
         get_local_analyzers.each { |analyzer|
             # If on start if analyzer is in downstream mode and ingress then restart the processl
-            if (analyzer.cmd_port.nil?) && ((analyzer.status == Analyzer::INGRESS) || (analyzer.status == Analyzer::DOWNSTREAM))
+            if (analyzer.cmd_port.nil?) && ((analyzer.status == Analyzers::INGRESS) || (analyzer.status == Analyzers::DOWNSTREAM))
                 port=get_port(analyzer.id)
                 $logger.error "We don't have a port number for #{analyzer.id}, assigning it #{port}"
-            elsif (!analyzer.cmd_port.nil?) && ((analyzer.status == Analyzer::INGRESS) || (analyzer.status == Analyzer::DOWNSTREAM))
+            elsif (!analyzer.cmd_port.nil?) && ((analyzer.status == Analyzers::INGRESS) || (analyzer.status == Analyzers::DOWNSTREAM))
                 @ports_analyzer[analyzer.cmd_port - @start_port + 1]=analyzer.id
                 $logger.debug "Setting cmd port #{analyzer.cmd_port}"
             end
@@ -238,9 +237,9 @@ class Master
 
     def get_local_analyzers
         if Sticky_ID == -1
-            local_analyzers = Analyzer.find(:all)
+            local_analyzers = Analyzers.find(:all)
         else
-            local_regions=Region.find(:all, :conditions => ["server_id=?", Sticky_ID])
+            local_regions=Regions.find(:all, :conditions => ["server_id=?", Sticky_ID])
             region_id_list=[]
             local_regions.each do |local_reg|
                 region_id_list.push(local_reg.id)
@@ -277,13 +276,13 @@ class Master
     # start monitor function.   This function launches the monitor.rb function.
     # daemon.rb class
     def start_monitor(analyzer_id, port)
-        if Sticky_ID != -1 && Region.find(Analyzer.find(analyzer_id).region_id).server_id != Sticky_ID
+        if Sticky_ID != -1 && Regions.find(Analyzers.find(analyzer_id).region_id).server_id != Sticky_ID
             $logger.debug "This analyzer is not on this server."
             return
         end
         $logger.debug "START MONITOR"
         $loggers[analyzer_id].debug "START MONITOR" if $is_debug
-        analyzer = Analyzer.find(analyzer_id)
+        analyzer = Analyzers.find(analyzer_id)
         opts={
                 :ARGV => ['start', analyzer_id.to_s, port.to_s]
         }
@@ -324,11 +323,11 @@ class Master
    # Looks up the TCP/IP port from the internal array by analyzer id
 
    def get_port(analyzer_id)
-     anl=Analyzer.find(analyzer_id)
+     anl=Analyzers.find(analyzer_id)
      return nil if anl.nil?
      return anl.cmd_port if !anl.cmd_port.nil?
 
-     cmd_port = Analyzer.assignment_cmd_port
+     cmd_port = Analyzers.assignment_cmd_port
      anl.update_attributes({:cmd_port=>cmd_port})
      @ports_analyzer[cmd_port-@start_port+1]=anl.id
      cmd_port
