@@ -2,7 +2,9 @@ module MiniRecord
     class Base
         @@conn = nil
 
+
         def self.inherited(child)
+            child.class_eval("def self.table_name\n#{child.inspect}\nend\ndef field_names\n#{child.inspect}\nend\n")
             @@conn = Connect.instance.get_connect
             define_field_names(child)
         end
@@ -38,7 +40,7 @@ module MiniRecord
                         raise "invalid data type:#{v.class}"
                 end
             }
-            sql  = "UPDATE #{self.class.inspect} SET #{setting.join(",")} WHERE #{Base.primary_key} = #{send(Base.primary_key)}"
+            sql  = "UPDATE #{table_name} SET #{setting.join(",")} WHERE #{Base.primary_key} = #{send(Base.primary_key)}"
             stat = connection.prepare(sql)
             stat.execute(*args)
             stat.close
@@ -95,7 +97,25 @@ module MiniRecord
 
             def create(attribute)
                 #sequence_name=connection.default_sequence_name(table_name, primary_key)
-                #connection.next_sequence_value(sequence_name)
+                #id = connection.next_sequence_value(sequence_name)
+                fields = self.fields_names.clone
+                fields.delete(primary_key)
+                sql = "insert #{self.table_name}(#{fields.join(",")}) values(#{(["?"]*fields.length).join(",")})"
+
+                stat   = connection.prepare(sql)
+                values = []
+                fields.each { |f_name|
+                    values << ((attribute.has_key?(f_name.to_sym)) ? attribute[f_name.to_sym] : "?")
+                }
+
+                stat.execute(*values)
+                id  = stat.insert_id()
+                obj = self.new
+                attribute.each { |k, v|
+                    obj.instance_variable_set("@#{k}", v)
+                }
+                obj.instance_variable_set("@#{primary_key}", id)
+                obj
             end
 
             def method_missing(methId, *args)
@@ -179,7 +199,7 @@ module MiniRecord
 
             def construct_finder_sql(options)
                 sql = "SELECT #{self.fields_names.join(",")} "
-                sql << "FROM #{self.inspect} "
+                sql << "FROM #{table_name} "
                 args = add_conditions!(sql, options[:conditions]) unless options[:conditions].nil?
                 add_order!(sql, options[:order]) unless options[:order].nil?
                 add_limit!(sql, options[:limit]) unless options[:limit].nil?

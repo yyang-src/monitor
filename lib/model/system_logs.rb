@@ -7,7 +7,7 @@ class System_logs < MiniRecord::Base
     ERROR=128
     EXCEPTION=192
     RECONNECT=256
-    def SystemLog.log(short_descr, descr, level, analyzer_id, ts=nil)
+    def System_logs.log(short_descr, descr, level, analyzer_id, ts=nil)
         if (short_descr.nil?)
             return nil
         end
@@ -19,7 +19,7 @@ class System_logs < MiniRecord::Base
         end
         if (!analyzer_id.nil?)
             #Verify analyzer
-            anl=Analyzer.find(analyzer_id)
+            anl=Analyzers.find(analyzer_id)
             if (anl.nil?)
                 return nil
             end
@@ -36,7 +36,7 @@ class System_logs < MiniRecord::Base
                 anl.save
             end
         end
-        log_rec=SystemLog.create({:short_descr=>short_descr, :descr=>descr,
+        log_rec=System_logs.create({:short_descr=>short_descr, :descr=>descr,
                                   :level=>level, :analyzer_id=>analyzer_id,:ts=>ts})
         return log_rec.id
     end

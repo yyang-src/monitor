@@ -133,7 +133,7 @@ class Master
                             `touch /tmp/keepalive_#{analyzer_id}.out`
                         rescue Exception => e
                             $logger.debug "Monitor process dead, let's kill it!"
-                            anl=Analyzer.find(analyzer_id)
+                            anl=Analyzers.find(analyzer_id)
                             if (!anl.nil?) && (!anl.pid.nil?) && (anl.pid != 0)
                                 begin
                                     $loggers[anl.id].debug "Kill analyzer process #{anl.pid}" if $is_debug
@@ -142,13 +142,13 @@ class Master
                                 rescue
                                 end
                             else
-                                SystemLog.log("Unable to start monitoring process for Analyzer: #{anl.name}", nil, SystemLog::MESSAGE, analyzer_id)
+                                System_logs.log("Unable to start monitoring process for Analyzer: #{anl.name}", nil, System_logs::MESSAGE, analyzer_id)
                                 $loggers[anl.id].debug "Unable to start monitoring process for Analyzer: #{anl.name}" if $is_debug
                                 anl.update_attributes({:pid => nil})
                             end
                             $logger.debug "Restarting monitor for #{analyzer_id}"
-                            $loggers[anl.id].debug "(Re)Starting the monitor server #{Analyzer.find(analyzer_id).ip}" if $is_debug
-                            SystemLog.log("(Re)Starting the monitor server #{Analyzer.find(analyzer_id).ip}", nil, SystemLog::MESSAGE, analyzer_id)
+                            $loggers[anl.id].debug "(Re)Starting the monitor server #{Analyzers.find(analyzer_id).ip}" if $is_debug
+                            System_logs.log("(Re)Starting the monitor server #{Analyzers.find(analyzer_id).ip}", nil, System_logs::MESSAGE, analyzer_id)
                             `touch /tmp/keepalive_#{analyzer_id}.out`
                             start_monitor(analyzer_id, port)
                             try_count[analyzer_id] = 0
@@ -170,7 +170,7 @@ class Master
                         rescue Timeout::Error #Instrument not responding. Lets kill the process.
                             $logger.debug "Timeout::Error"
                             flag=false
-                            anl=Analyzer.find(analyzer_id)
+                            anl=Analyzers.find(analyzer_id)
                             if (try_count[analyzer_id] > retrys)
                                 if (!anl.nil?) && (!anl.pid.nil?) && (anl.pid != 0)
                                     begin
@@ -182,8 +182,8 @@ class Master
                                     rescue
                                     end
                                 else
-                                    SystemLog.log("Unable to start monitoring process for Analyzer: #{anl.name}", nil, SystemLog::MESSAGE, analyzer_id)
-                                    $loggers[anl.id].debug "Unable to start monitoring process for Analyzer: #{anl.name}" if $is_debug
+                                    System_logs.log("Unable to start monitoring process for Analyzer: #{anl.name}", nil, System_logs::MESSAGE, analyzer_id)
+                                    $loggers[anl.id].debug "Unable to start monitoring process for Analyzers: #{anl.name}" if $is_debug
                                     anl.update_attributes({:pid => nil})
                                 end
                             end
@@ -194,11 +194,11 @@ class Master
                             flag=false
                             #if (try_count[analyzer_id] > 5)
                             if (try_count[analyzer_id] > retrys)
-                                anl=Analyzer.find(analyzer_id)
+                                anl=Analyzers.find(analyzer_id)
                                 #ret = `ps -ef |  grep #{anl.pid}`
                                 #unless ret.include?("monitor")
                                 begin
-                                    if Sticky_ID != -1 && Region.find(Analyzer.find(analyzer_id).region_id).server_id != Sticky_ID
+                                    if Sticky_ID != -1 && Region.find(Analyzers.find(analyzer_id).region_id).server_id != Sticky_ID
                                         $logger.debug "This analyzer is not on this server."
                                         $loggers[anl.id].debug "This analyzer is not on this server." if $is_debug
                                         next
@@ -210,8 +210,8 @@ class Master
                                     puts e.message
                                     try_count[analyzer_id]=0
                                     $logger.debug "Restarting monitor for #{analyzer_id}"
-                                    SystemLog.log("(Re)Starting the monitor server #{Analyzer.find(analyzer_id).ip}", nil, SystemLog::MESSAGE, analyzer_id)
-                                    $loggers[anl.id].debug "(Re)Starting the monitor server #{Analyzer.find(analyzer_id).ip}" if $is_debug
+                                    System_logs.log("(Re)Starting the monitor server #{Analyzers.find(analyzer_id).ip}", nil, System_logs::MESSAGE, analyzer_id)
+                                    $loggers[anl.id].debug "(Re)Starting the monitor server #{Analyzers.find(analyzer_id).ip}" if $is_debug
                                     `touch /tmp/keepalive_#{analyzer_id}.out`
                                     start_monitor(analyzer_id, port)
                                 end
@@ -244,7 +244,7 @@ class Master
             local_regions.each do |local_reg|
                 region_id_list.push(local_reg.id)
             end
-            local_analyzers = Analyzer.find(:all, :conditions => ["region_id in (?)", region_id_list])
+            local_analyzers = Analyzers.find(:all, :conditions => ["region_id in (#{region_id_list.join(",")})"])
         end
         local_analyzers
     end
@@ -378,7 +378,7 @@ class Master
          if (anl_port_nbr.nil?)
             #new_port=allocate_port(analyzer_id)
             #if new_port.nil?
-               SystemLog.log("Unable to allocate port",nil,SystemLog::ERROR,analyzer_id)
+               System_logs.log("Unable to allocate port",nil,System_logs::ERROR,analyzer_id)
                raise "Not enough ports for server"
             #end
             #start_monitor(analyzer_id, new_port)
