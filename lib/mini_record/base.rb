@@ -96,16 +96,14 @@ module MiniRecord
             end
 
             def create(attribute)
-                #sequence_name=connection.default_sequence_name(table_name, primary_key)
-                #id = connection.next_sequence_value(sequence_name)
-                fields = self.fields_names.clone
-                fields.delete(primary_key)
+                #does not thread safe or sync.
+                fields = attribute.keys
                 sql = "insert #{self.table_name}(#{fields.join(",")}) values(#{(["?"]*fields.length).join(",")})"
 
                 stat   = connection.prepare(sql)
                 values = []
                 fields.each { |f_name|
-                    values << ((attribute.has_key?(f_name.to_sym)) ? attribute[f_name.to_sym] : "?")
+                    values << attribute[f_name.to_sym]
                 }
 
                 stat.execute(*values)
@@ -122,7 +120,7 @@ module MiniRecord
                 str        = methId.id2name
                 field_name = str[8..-1]
                 if fields_names.include?(field_name)
-                    find(:all, :conditions => {field_name.to_sym => args[0]})
+                    find(:first, :conditions => {field_name.to_sym => args[0]})
                 else
                     super
                 end

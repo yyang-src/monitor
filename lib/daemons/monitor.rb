@@ -4,6 +4,7 @@ $:.push(File.expand_path(File.dirname(__FILE__))+"/../../vendor/sunrise/lib")
 $:.push(File.expand_path(File.dirname(__FILE__))+"/../../")
 $:.push(File.expand_path(File.dirname(__FILE__)))
 #Dir.chdir(File.dirname(__FILE__)+"/../..")
+require 'lib/mini_record/mini_record'
 require 'common'
 require 'config_files'
 require 'utils'
@@ -96,7 +97,7 @@ class CmdQueue
         while (@cmd_queue.length > 0)
             cmd=@cmd_queue.shift()
             if (!cmd.nil?) #Command Recieved
-                Analyzer.connection.reconnect!()
+                Analyzers.connection.reconnect!()
                 monitor_obj.process_cmd(cmd)
             end
         end
@@ -132,23 +133,21 @@ class Monitor
         @instr_id=id
         @engine = nil
         @is_debug = is_debug
-        instr=Analyzer.find(@instr_id)
+        instr=Analyzers.find(@instr_id)
         @default_att=instr.attenuator
         instr.clear_exceptions()
         instr.clear_progress()
         @instr_ip=instr.ip
         @instr_obj=Instrument.new(@instr_ip, cmd_port, instr.hmid, $logger,is_debug)
         @cmd_port=cmd_port
-        self.state=Analyzer::DISCONNECTED
+        self.state=Analyzers::DISCONNECTED
         @measure_cycle=0
-        @thread_lock=Mutex.new
-        @thread_lock2=Mutex.new
         @working = true
         @error = nil
     end
 
     def reload_instrument()
-        instr=Analyzer.find(@instr_id)
+        instr=Analyzers.find(@instr_id)
         instr.clear_exceptions()
         instr.clear_progress()
         @instr_ip=instr.ip
@@ -159,24 +158,24 @@ class Monitor
     def initialize_instruments
         systemlog_msg="Initializing Instruments"
         #reload_instrument()
-        SystemLog.log(systemlog_msg, systemlog_msg, SystemLog::MESSAGE, instr_id)
-        instr=Analyzer.find(@instr_id)
+        System_logs.log(systemlog_msg, systemlog_msg, System_logs::MESSAGE, instr_id)
+        instr=Analyzers.find(@instr_id)
         @instr_obj.ip=instr.ip
         @instr_obj.initialize_instr()
         @default_att=instr.attenuator
         @measure_cycle=0
         systemlog_msg="Initialization of instruments complete."
-        SystemLog.log(systemlog_msg, systemlog_msg, SystemLog::MESSAGE, instr_id)
+        System_logs.log(systemlog_msg, systemlog_msg, System_logs::MESSAGE, instr_id)
     end
 
     def upgrade_firmware
-        instr = Analyzer.find(instr_id)
+        instr = Analyzers.find(instr_id)
         if instr.nil?
-            SystemLog.log("Unable to find instrument", "Unable to find instrument", SystemLog::MESSAGE, instr_id)
+            System_logs.log("Unable to find instrument", "Unable to find instrument", System_logs::MESSAGE, instr_id)
             return nil
         end
         if instr.firmware_ref.nil?
-            SystemLog.log("No Firmware set", "No Firmware set", SystemLog::MESSAGE, instr_id)
+            System_logs.log("No Firmware set", "No Firmware set", System_logs::MESSAGE, instr_id)
             return nil
         end
         instr.update_attributes(:firm_transfer => 0)
@@ -190,15 +189,15 @@ class Monitor
                     instr.update_attributes(:firm_transfer => per)
                 end
             end
-            SystemLog.log("Rebooting Analyzer ", "", SystemLog::PROGRESS, instr_id)
+            System_logs.log("Rebooting Analyzer ", "", System_logs::PROGRESS, instr_id)
             instr.update_attributes(:firm_transfer => 0)
             @instr_obj.session.reboot()
-            SystemLog.log("Rebooting Analyzer, Please wait 3 minutes before reconnecting.", "", SystemLog::PROGRESS, instr_id)
+            System_logs.log("Rebooting Analyzer, Please wait 3 minutes before reconnecting.", "", System_logs::PROGRESS, instr_id)
             instr.update_attributes(:auto_mode => 3) #Disable Auto connect
             disconn_instr()
         else
             $logger.debug("Do not recognize firmware #{instr.firmware_ref}")
-            SystemLog.log("Do not recognize firmware #{instr.firmware_ref}", "Do not recognize firmware #{instr.firmware_ref}", SystemLog::WARNING, instr_id)
+            System_logs.log("Do not recognize firmware #{instr.firmware_ref}", "Do not recognize firmware #{instr.firmware_ref}", System_logs::WARNING, instr_id)
             return nil
         end
     end
@@ -208,23 +207,23 @@ class Monitor
 
         puts "############# start_ingress"
 
-        if @state==Analyzer::INGRESS
+        if @state==Analyzers::INGRESS
             $logger.debug "analyzer is already in ingress mode"
             return
         end
-        instr=Analyzer.find(@instr_id)
+        instr=Analyzers.find(@instr_id)
         deactivate_analyzer_alarms(instr)
         instr.get_port_list.collect { |port| @instr_obj.active_count["#{port[:site_id]}"]=0 }
-        @start_freq=ConfigParam.find(23)
-        @stop_freq=ConfigParam.find(24)
+        @start_freq=Config_params.find(23)
+        @stop_freq=Config_params.find(24)
         if instr.switches.nil?
-            SystemLog.log("Switches are required for Ingress Monitoring", "Switches not properly defined for analyzer #{instr.name}.", SystemLog::ERROR, instr_id)
-            self.state=Analyzer::CONNECTED
+            System_logs.log("Switches are required for Ingress Monitoring", "Switches not properly defined for analyzer #{instr.name}.", System_logs::ERROR, instr_id)
+            self.state=Analyzers::CONNECTED
         elsif instr[:start_freq].to_i<(@start_freq[:val].to_i*10e5) || instr[:stop_freq].to_i>(@stop_freq[:val].to_i*10e5)
-            SystemLog.log("Global start Freq and stop Freq are #{@start_freq[:val].to_i*10e5} hz #{@stop_freq[:val].to_i*10e5} hz", "Freq range not properly defined for analyzer #{instr.name}.", SystemLog::ERROR, instr_id)
-            SystemLog.log("individual start Freq and stop Freq are #{instr[:start_freq]} hz #{instr[:stop_freq]} hz", "Freq range not properly defined for analyzer #{instr.name}.", SystemLog::ERROR, instr_id)
-            SystemLog.log("Individual Analyzer's freq range can't larger than global freq range.", "Freq range not properly defined for analyzer #{instr.name}.", SystemLog::ERROR, instr_id)
-            self.state=Analyzer::DISCONNECTED
+            System_logs.log("Global start Freq and stop Freq are #{@start_freq[:val].to_i*10e5} hz #{@stop_freq[:val].to_i*10e5} hz", "Freq range not properly defined for analyzer #{instr.name}.", System_logs::ERROR, instr_id)
+            System_logs.log("individual start Freq and stop Freq are #{instr[:start_freq]} hz #{instr[:stop_freq]} hz", "Freq range not properly defined for analyzer #{instr.name}.", System_logs::ERROR, instr_id)
+            System_logs.log("Individual Analyzer's freq range can't larger than global freq range.", "Freq range not properly defined for analyzer #{instr.name}.", System_logs::ERROR, instr_id)
+            self.state=Analyzers::DISCONNECTED
         else
             instr.update_attributes({ :stage => 5 })
             @instr_obj.upload_monitoring_files(@instr_obj.get_piddir())
@@ -235,18 +234,18 @@ class Monitor
             instr.update_attributes({ :stage => 8 })
             port_list=instr.get_port_list
             port_list.each do |port|
-                swp=SwitchPort.find(port[:port_id])
-                datalog=Datalog.find(swp.last_datalog_id) if swp.is_return_path? && swp.last_datalog_id != 0 && Datalog.exists?(swp.last_datalog_id)
+                swp=Switch_ports.find(port[:port_id])
+                datalog=Datalogs.find(swp.last_datalog_id) if swp.is_return_path? && swp.last_datalog_id != 0 && Datalogs.exists?(swp.last_datalog_id)
                 DatalogProfile.test_score_alarm(datalog) unless datalog.nil?
             end
             instr.update_attributes({ :stage => 9 })
-            self.state=Analyzer::INGRESS
+            self.state=Analyzers::INGRESS
             if instr.snmp_active
-                counter=ConfigParam.increment("SNMP Sequence Counter")
-                snmp_mgr_list=ConfigParam.find(:all, :conditions => { :category => "SNMP" })
+                counter=Config_params.increment("SNMP Sequence Counter")
+                snmp_mgr_list=Config_params.find(:all, :conditions => { :category => "SNMP" })
                 snmp_mgr_list.each { |snmp_mgr|
                     if snmp_mgr.val.length > 0
-                        Avantron::InstrumentUtils.snmp_monitoring(2, snmp_mgr.val, counter, instr.id, instr.name, instr.att_count, Analyzer::INGRESS, "Ingress on Analyzer #{instr.name} is recovered", instr.region.ip)
+                        Avantron::InstrumentUtils.snmp_monitoring(2, snmp_mgr.val, counter, instr.id, instr.name, instr.att_count, Analyzers::INGRESS, "Ingress on Analyzer #{instr.name} is recovered", instr.region.ip)
                     end
                 }
             end
@@ -281,19 +280,19 @@ class Monitor
         $logger.debug "start monitor.stop_ingress "
 
         @engine.stop
-        self.state=Analyzer::CONNECTED
-        instr=Analyzer.find(@instr_id)
+        self.state=Analyzers::CONNECTED
+        instr=Analyzers.find(@instr_id)
         deactivate_analyzer_alarms(instr)
         instr.reset_ports_nf_grade()
         instr.get_port_list.collect { |port| @instr_obj.active_count["#{port[:site_id]}"]=0 }
         #    instr.update_attributes({:status=>@state, :att_count=> instr.att_count+10})
         @instr_obj.stop_monitoring()
         if instr.snmp_active
-            counter=ConfigParam.increment("SNMP Sequence Counter")
-            snmp_mgr_list=ConfigParam.find(:all, :conditions => {:category => "SNMP"})
+            counter=Config_params.increment("SNMP Sequence Counter")
+            snmp_mgr_list=Config_params.find(:all, :conditions => {:category => "SNMP"})
             snmp_mgr_list.each { |snmp_mgr|
                 if snmp_mgr.val.length > 0
-                    Avantron::InstrumentUtils.snmp_monitoring(13, snmp_mgr.val, counter, instr.id, instr.name, instr.att_count, Analyzer::INGRESS, "Ingress on Analyzer #{instr.name} is stopped", instr.region.ip)
+                    Avantron::InstrumentUtils.snmp_monitoring(13, snmp_mgr.val, counter, instr.id, instr.name, instr.att_count, Analyzers::INGRESS, "Ingress on Analyzer #{instr.name} is stopped", instr.region.ip)
                 end
             }
         end
@@ -301,7 +300,7 @@ class Monitor
     end
 
     def build_port_list(analyzer_id, forward_path=true)
-        analyzer=Analyzer.find(analyzer_id)
+        analyzer=Analyzers.find(analyzer_id)
         schedule=analyzer.schedule.nil? ? nil : analyzer.schedule
         port_list=[]
         if !schedule.nil?
@@ -321,7 +320,7 @@ class Monitor
     def build_detect_channel_drops_tasks(analyzer)
         task_queue = []
         if analyzer.downstream_setting.nil?
-            SystemLog.log("Downstream Measurement Configuration not configured", "Analyzer with id #{@instr_id} has no Downstream Measurement Configuration", SystemLog::ERROR, @instr_id)
+            System_logs.log("Downstream Measurement Configuration not configured", "Analyzer with id #{@instr_id} has no Downstream Measurement Configuration", System_logs::ERROR, @instr_id)
             raise(SunriseError.new("Downstream Measurement Configuration not configured."))
         end
         return if analyzer.downstream_setting.is_measurement_mode?
@@ -335,7 +334,7 @@ class Monitor
             detect_ports[site.id]=analyzer.cfg_channels if !analyzer.cfg_channels.empty?
         else
             analyzer_port_list.each { |swp|
-                temp_cfg_arr=CfgChannelTest.find(:all, :conditions => { :switch_port_id => swp[:port_id], :quick_scan_flag => true })
+                temp_cfg_arr=Cfg_channel_tests.find(:all, :conditions => { :switch_port_id => swp[:port_id], :quick_scan_flag => true })
                 cfg_channels_temp=Array.new
                 temp_cfg_arr.each { |cfg_test_item|
                     cfg_channels_temp.push({ :cfg_channel => cfg_test_item.cfg_channel, :analog_nominal => cfg_test_item.video_lvl_nominal, :digital_nominal => cfg_test_item.dcp_nominal })
@@ -345,7 +344,7 @@ class Monitor
         end
         $logger.debug "to do get data "
         detect_ports.keys.each { |hash_key|
-            site=Site.find(hash_key)
+            site=Sites.find(hash_key)
             _cfg_channel = detect_ports[hash_key].compact
             q_task = QuickScanTask.new($monitor_obj, _cfg_channel, site, analyzer)
             q_task.logger=$logger
@@ -371,47 +370,47 @@ class Monitor
 
 
     def start_performance()
-        if @state == Analyzer::DOWNSTREAM
+        if @state == Analyzers::DOWNSTREAM
             #puts "!!!!!!!!!!!!analyzer is already in downstream mode"
             return
         end
 
         #puts "<<<<<<<<<<<<<<<<<<<<<< start_performance"
 
-        self.state=Analyzer::DOWNSTREAM
+        self.state=Analyzers::DOWNSTREAM
 
-        instr=Analyzer.find(@instr_id)
+        instr=Analyzers.find(@instr_id)
         if instr.nil?
             raise ConfigurationError.new("Unable to find analyzer #{@instr_id}")
-            SystemLog.log("Analyzer not found",
+            System_logs.log("Analyzer not found",
                           "Analyzer with id #{@instr_id} not found",
-                          SystemLog::ERROR, @instr_id)
+                          System_logs::ERROR, @instr_id)
         end
         if instr.cfg_channels.length ==0
             $logger.debug "FOR CFG CHANNELS NOT found"
-            SystemLog.log("Test Plan not configured",
+            System_logs.log("Test Plan not configured",
                           "Analyzer with id #{@instr_id} has no test plan",
-                          SystemLog::ERROR, @instr_id)
-            self.state=Analyzer::CONNECTED
+                          System_logs::ERROR, @instr_id)
+            self.state=Analyzers::CONNECTED
             instr.update_attributes({ :status => @state, :processing => nil, :exception_msg => "Test Plan not configured" })
             return
         end
 
         down_setting = instr.downstream_setting
         if down_setting.nil?
-            SystemLog.log("Downstream Measurement Configuration not configured",
+            System_logs.log("Downstream Measurement Configuration not configured",
                           "Analyzer with id #{@instr_id} has no Downstream Measurement Configuration",
-                          SystemLog::ERROR, @instr_id)
-            self.state=Analyzer::CONNECTED
+                          System_logs::ERROR, @instr_id)
+            self.state=Analyzers::CONNECTED
             instr.update_attributes({ :status => @state, :processing => nil, :exception_msg => "Downstream Measurement Configuration not configured" })
             return
         else
             if down_setting.is_quick_scan_or_both_mode?
                 if not instr.is_support_quick_scan
-                    SystemLog.log("Downstream monitoring is not supported by this analyzer",
+                    System_logs.log("Downstream monitoring is not supported by this analyzer",
                                   "Downstream monitoring is not supported by this analyzer with id=#{@instr_id}",
-                                  SystemLog::ERROR, @instr_id)
-                    self.state=Analyzer::CONNECTED
+                                  System_logs::ERROR, @instr_id)
+                    self.state=Analyzers::CONNECTED
                     instr.update_attributes({ :status => @state, :processing => nil, :exception_msg => "Downstream monitoring is not supported by this analyzer" })
                     return
                 end
@@ -432,12 +431,12 @@ class Monitor
         end
         site=instr.site
         if instr.snmp_active
-            counter=ConfigParam.increment("SNMP Sequence Counter")
-            snmp_mgr_list=ConfigParam.find(:all, :conditions => {:category => "SNMP"})
+            counter=Config_params.increment("SNMP Sequence Counter")
+            snmp_mgr_list=Config_params.find(:all, :conditions => {:category => "SNMP"})
             snmp_mgr_list.each { |snmp_mgr|
                 if snmp_mgr.val.length > 0
                     $logger.debug "start Avantron::InstrumentUtils.snmp_monitoring in start_performance"
-                    Avantron::InstrumentUtils.snmp_monitoring(14, snmp_mgr.val, counter, instr.id, instr.name, instr.att_count, Analyzer::DOWNSTREAM, "downstream on Analyzer #{instr.name} is recovered", instr.region.ip)
+                    Avantron::InstrumentUtils.snmp_monitoring(14, snmp_mgr.val, counter, instr.id, instr.name, instr.att_count, Analyzers::DOWNSTREAM, "downstream on Analyzer #{instr.name} is recovered", instr.region.ip)
                 end
             }
         end
@@ -452,27 +451,27 @@ class Monitor
         puts "Trying to stop downstream mode"
         @engine.stop
         $logger.debug "Stop Performance"
-        self.state=Analyzer::CONNECTED
-        instr=Analyzer.find(@instr_id)
+        self.state=Analyzers::CONNECTED
+        instr=Analyzers.find(@instr_id)
         instr.update_attributes({ :status => @state, :processing => nil })
         @measure_cycle=0
         deactivate_analyzer_alarms(instr)
         if instr.snmp_active
-            counter=ConfigParam.increment("SNMP Sequence Counter")
-            snmp_mgr_list=ConfigParam.find(:all, :conditions => { :category => "SNMP" })
+            counter=Config_params.increment("SNMP Sequence Counter")
+            snmp_mgr_list=Config_params.find(:all, :conditions => { :category => "SNMP" })
             snmp_mgr_list.each { |snmp_mgr|
                 if snmp_mgr.val.length > 0
-                    Avantron::InstrumentUtils.snmp_monitoring(1, snmp_mgr.val, counter, instr.id, instr.name, instr.att_count, Analyzer::DOWNSTREAM, "downstream on Analyzer #{instr.name} is stopped", instr.region.ip)
+                    Avantron::InstrumentUtils.snmp_monitoring(1, snmp_mgr.val, counter, instr.id, instr.name, instr.att_count, Analyzers::DOWNSTREAM, "downstream on Analyzer #{instr.name} is stopped", instr.region.ip)
                 end
             }
         end
     end
 
     def conn_instr()
-        instr=Analyzer.find(@instr_id)
+        instr=Analyzers.find(@instr_id)
         instr.update_attributes({ :exception_msg =>nil })
         deactivate_analyzer_alarms(instr)
-        self.state=Analyzer::CONNECTED
+        self.state=Analyzers::CONNECTED
         $monitor_obj.initialize_instruments()
         @instr_obj.get_firmware_version()
         if instr.att_count <9 and instr.auto_mode !=3
@@ -491,8 +490,8 @@ class Monitor
         rescue => e
             $logger.debug "shutdown issue #{e.message}\n#{e.backtrace}"
         ensure
-            self.state=Analyzer::DISCONNECTED
-            instr=Analyzer.find(@instr_id)
+            self.state=Analyzers::DISCONNECTED
+            instr=Analyzers.find(@instr_id)
             instr.update_attributes({ :status => @state, :processing => nil })
             deactivate_analyzer_alarms(instr)
         end
@@ -501,30 +500,30 @@ class Monitor
 
     def auto_connect()
         $logger.debug "start monitor.auto_connect "
-        instr=Analyzer.find(@instr_id)
+        instr=Analyzers.find(@instr_id)
         if instr.att_count < 9
-            if instr.auto_mode !=3 and (@state == Analyzer::DISCONNECTED or instr.att_count == -1)
+            if instr.auto_mode !=3 and (@state == Analyzers::DISCONNECTED or instr.att_count == -1)
                 $logger.debug "Start Auto Connect Check. ATTR COUNT #{instr.att_count}"
-                SystemLog.log("Auto connect is runing at #{instr.att_count + 2} times", "This is the #{instr.att_count + 1} times connect.", SystemLog::RECONNECT, @instr_id)
+                System_logs.log("Auto connect is runing at #{instr.att_count + 2} times", "This is the #{instr.att_count + 1} times connect.", System_logs::RECONNECT, @instr_id)
             end
             #$logger.debug "Start Auto Connect 111"
             if instr.auto_mode == 1 #auto start ingress
                 $logger.debug "Start Auto Connect #{@state}"
-                if (@state == Analyzer::CONNECTED)
+                if (@state == Analyzers::CONNECTED)
                     $logger.debug("already Connected,search ingress switchport")
 
-                    unless SwitchPort.count(:all,
+                    unless Switch_ports.count(:all,
                                             :conditions => ["switch_id in (?) and purpose = ?",
-                                                            instr.switches.collect { |sw| sw.id }, SwitchPort::RETURN_PATH]) > 0
+                                                            instr.switches.collect { |sw| sw.id }, Switch_ports::RETURN_PATH]) > 0
                         instr.update_attributes({:att_count => -1, :auto_mode => 3})
-                        SystemLog.log("Unable to auto start Ingress Monitoring. You have no Return Path Switch Ports.", "Unable to auto start Ingress Monitoring. You have no Return Path Switch Ports.", SystemLog::RECONNECT, instr.id)
+                        System_logs.log("Unable to auto start Ingress Monitoring. You have no Return Path Switch Ports.", "Unable to auto start Ingress Monitoring. You have no Return Path Switch Ports.", System_logs::RECONNECT, instr.id)
                         raise(SunriseError.new("Unable to auto start Ingress Monitoring. You have no Return Path Switch Ports."))
                         return
                     end
                     $logger.debug "ingress switch port not zero,start ingress"
 
                     start_ingress()
-                elsif (@state == Analyzer::DISCONNECTED)
+                elsif (@state == Analyzers::DISCONNECTED)
                     $logger.debug "DISCONNECTED,start conn_instr"
                     conn_instr()
                 else
@@ -533,21 +532,21 @@ class Monitor
             elsif instr.auto_mode == 2 #auto start performance
 
                 $logger.debug "start auto connect #{@state} with start performance"
-                if (@state == Analyzer::CONNECTED)
+                if (@state == Analyzers::CONNECTED)
                     $logger.debug("already Connected,search downstream switchport")
                     if Switch.count(:all, :conditions => ["analyzer_id=?", instr.id]) > 0
-                        unless SwitchPort.count(:all,
+                        unless Switch_ports.count(:all,
                                                 :conditions => ["switch_id in (?) and purpose = ?",
-                                                                instr.switches.collect { |sw| sw.id }, SwitchPort::FORWARD_PATH]) > 0
+                                                                instr.switches.collect { |sw| sw.id }, Switch_ports::FORWARD_PATH]) > 0
                             instr.update_attributes({:att_count => -1, :auto_mode => 3})
-                            SystemLog.log("Unable to auto start Performance Monitoring. You have no Forward Path Switch Ports.", "Unable to auto start Performance Monitoring. You have no Forward Path Switch Ports.", SystemLog::RECONNECT, instr.id)
+                            System_logs.log("Unable to auto start Performance Monitoring. You have no Forward Path Switch Ports.", "Unable to auto start Performance Monitoring. You have no Forward Path Switch Ports.", System_logs::RECONNECT, instr.id)
                             raise(SunriseError.new("Unable to auto start Performance Monitoring. You have no Forward Path Switch Ports."))
                             return
                         end
                     end
                     $logger.debug "downstream switch port not zero,start performance"
                     start_performance()
-                elsif (@state == Analyzer::DISCONNECTED)
+                elsif (@state == Analyzers::DISCONNECTED)
                     $logger.debug "DISCONNECTED,start conn_instr"
                     conn_instr()
                     #start_performance()
@@ -559,9 +558,9 @@ class Monitor
             end
         else
             instr.update_attributes({:att_count => -1, :auto_mode => 3})
-            monitor_type = instr.auto_mode.eql?(1) ? Analyzer::INGRESS : Analyzer::DOWNSTREAM
+            monitor_type = instr.auto_mode.eql?(1) ? Analyzers::INGRESS : Analyzers::DOWNSTREAM
             disconnect_snmp_trap(instr.id, 0, monitor_type)
-            SystemLog.log("Auto connect Mode shut down as auto connect failed.", "Auto Connect have already try 9 times. But Failed, then give up Auto Connect.", SystemLog::RECONNECT, instr.id)
+            System_logs.log("Auto connect Mode shut down as auto connect failed.", "Auto Connect have already try 9 times. But Failed, then give up Auto Connect.", System_logs::RECONNECT, instr.id)
             $logger.debug "Auto Connect have already try 9 times. But Failed, then give up Auto Connect."
         end
         $logger.debug "end auto_connect"
@@ -570,11 +569,11 @@ class Monitor
     def reset_analyzer()
         @engine.stop
         #$logger.debug "Start reset_analyzer"
-        anl=Analyzer.find(@instr_id)
+        anl=Analyzers.find(@instr_id)
         #anl.cmd_port=nil
         anl.clear_exceptions()
         anl.clear_progress()
-        anl.status=Analyzer::DISCONNECTED
+        anl.status=Analyzers::DISCONNECTED
         anl.save
         #flash[:notice]='Please wait 30 seconds before connecting the analyzer so it can finish rebooting.'
         begin
@@ -582,7 +581,7 @@ class Monitor
             $logger.debug "before Avantron::InstrumentUtils.reset in reset_analyzer"
             Avantron::InstrumentUtils.reset(anl.ip)
             $logger.debug "after Avantron::InstrumentUtils.reset in reset_analyzer"
-            SystemLog.log("Analyzer is rebooting, wait 40s to reconnect", "", SystemLog::RECONNECT, anl.id)
+            System_logs.log("Analyzer is rebooting, wait 40s to reconnect", "", System_logs::RECONNECT, anl.id)
             sleep 40
         rescue Errno::EHOSTUNREACH => ex
             $logger.debug ex.message
@@ -614,10 +613,10 @@ class Monitor
 
     def test_switch()
         $logger.debug "start monitor.test_switch"
-        SystemLog.log("testswitch", "testswitch", SystemLog::MESSAGE, @instr_id)
-        instr=Analyzer.find(@instr_id)
-        if (instr.status == Analyzer::CONNECTED)
-            instr.update_attribute(:status, Analyzer::SWITCHING)
+        System_logs.log("testswitch", "testswitch", System_logs::MESSAGE, @instr_id)
+        instr=Analyzers.find(@instr_id)
+        if (instr.status == Analyzers::CONNECTED)
+            instr.update_attribute(:status, Analyzers::SWITCHING)
             begin
                 @count_rptp=@instr_obj.session.get_rptp_count.to_i
                 if @count_rptp == 1
@@ -636,12 +635,12 @@ class Monitor
                     $logger.debug "newtestswitch: #{current_rptp}"
                 }
                 instr.update_attribute(:current_nbr, '-99')
-                instr.update_attribute(:status, Analyzer::CONNECTED)
+                instr.update_attribute(:status, Analyzers::CONNECTED)
             rescue => ex
                 $logger.debug "Unknown Error #{ex.message}"
                 $logger.debug ex.backtrace()
-                SystemLog.log("UNKNOWN ERROR #{ex.message} on Switch #{@count_rptp < 16 ? 1 : ((@rptp_port+1)%16+1)}", ex.backtrace(), SystemLog::EXCEPTION, @instr_id)
-                #SystemLog.log("UNKNOWN ERROR #{ex.message} ",ex.backtrace(),SystemLog::EXCEPTION,@instr_id)
+                System_logs.log("UNKNOWN ERROR #{ex.message} on Switch #{@count_rptp < 16 ? 1 : ((@rptp_port+1)%16+1)}", ex.backtrace(), System_logs::EXCEPTION, @instr_id)
+                #System_logs.log("UNKNOWN ERROR #{ex.message} ",ex.backtrace(),System_logs::EXCEPTION,@instr_id)
                 current_rptp=@instr_obj.session.get_rptp_list(false)
                 msg=ex.message+' Error port is: '+(current_rptp.first.nil? ? 'unknown' : current_rptp.first.to_s)
                 instr.update_attributes({:exception_msg => msg, :current_nbr => '-11'})
@@ -658,7 +657,7 @@ class Monitor
     def shutdown()
         $logger.debug "start shutdown"
         systemlog_msg="Shutting Down"
-        SystemLog.log(systemlog_msg, systemlog_msg, SystemLog::MESSAGE, instr_id)
+        System_logs.log(systemlog_msg, systemlog_msg, System_logs::MESSAGE, instr_id)
         disconn_instr()
         $logger.debug "end shutdown"
     end
@@ -674,15 +673,15 @@ class Monitor
 
             if (cmd == NOMON)
                 systemlog_msg="Stopping Monitoring, still connected to instrument"
-                SystemLog.log(systemlog_msg, systemlog_msg, SystemLog::MESSAGE, instr_id)
-                if (@state == Analyzer::INGRESS)
+                System_logs.log(systemlog_msg, systemlog_msg, System_logs::MESSAGE, instr_id)
+                if (@state == Analyzers::INGRESS)
                     stop_ingress()
-                elsif (@state == Analyzer::DOWNSTREAM)
+                elsif (@state == Analyzers::DOWNSTREAM)
                     stop_performance()
-                elsif (@state == Analyzer::DISCONNECTED)
+                elsif (@state == Analyzers::DISCONNECTED)
                     conn_instr()
-                    disconnect_snmp_trap(@instr_id, 3, Analyzer::CONNECTED)
-                elsif (@state == Analyzer::CONNECTED)
+                    disconnect_snmp_trap(@instr_id, 3, Analyzers::CONNECTED)
+                elsif (@state == Analyzers::CONNECTED)
                     #Do Nothing
                 end
             elsif (cmd == TSWITCH)
@@ -693,74 +692,74 @@ class Monitor
             elsif (cmd == FIRMWARE)
                 $logger.debug "UPGRADING FIRMWARE"
                 systemlog_msg="Upgrading Firmware"
-                SystemLog.log(systemlog_msg, systemlog_msg, SystemLog::MESSAGE, instr_id)
-                if (@state == Analyzer::INGRESS)
+                System_logs.log(systemlog_msg, systemlog_msg, System_logs::MESSAGE, instr_id)
+                if (@state == Analyzers::INGRESS)
                     #Do Nothing
-                elsif (@state == Analyzer::CONNECTED)
+                elsif (@state == Analyzers::CONNECTED)
                     upgrade_firmware()
-                elsif (@state == Analyzer::DISCONNECTED)
+                elsif (@state == Analyzers::DISCONNECTED)
                     conn_instr()
                     upgrade_firmware()
-                elsif (@state == Analyzer::DOWNSTREAM)
+                elsif (@state == Analyzers::DOWNSTREAM)
                     #Do Nothing
                 end
 
             elsif (cmd == INGRESS)
                 systemlog_msg="Switching to Ingress Mode"
-                SystemLog.log(systemlog_msg, systemlog_msg, SystemLog::MESSAGE, instr_id)
-                if (@state == Analyzer::CONNECTED)
+                System_logs.log(systemlog_msg, systemlog_msg, System_logs::MESSAGE, instr_id)
+                if (@state == Analyzers::CONNECTED)
                     start_ingress()
-                elsif (@state == Analyzer::DOWNSTREAM)
+                elsif (@state == Analyzers::DOWNSTREAM)
                     stop_performance()
                     start_ingress()
-                elsif (@state == Analyzer::DISCONNECTED)
+                elsif (@state == Analyzers::DISCONNECTED)
                     conn_instr()
                     start_ingress()
-                elsif (@state == Analyzer::INGRESS)
+                elsif (@state == Analyzers::INGRESS)
                     #Do Nothing
                 end
             elsif (cmd == DOWNSTREAM)
                 systemlog_msg="Switching to Downstream Mode"
-                SystemLog.log(systemlog_msg, systemlog_msg, SystemLog::MESSAGE, instr_id)
-                if (@state == Analyzer::INGRESS)
+                System_logs.log(systemlog_msg, systemlog_msg, System_logs::MESSAGE, instr_id)
+                if (@state == Analyzers::INGRESS)
                     stop_ingress()
                     start_performance()
-                elsif (@state == Analyzer::CONNECTED)
+                elsif (@state == Analyzers::CONNECTED)
                     start_performance()
-                elsif (@state == Analyzer::DISCONNECTED)
+                elsif (@state == Analyzers::DISCONNECTED)
                     conn_instr()
                     start_performance()
-                elsif (@state == Analyzer::DOWNSTREAM)
+                elsif (@state == Analyzers::DOWNSTREAM)
                     #puts "process cmd DOWNSTREAM: not handled"
                 end
             elsif (cmd == HEARTBEAT)
             elsif (cmd == MAINT)
                 current_state = @state
                 systemlog_msg="Switching to Maintenance Mode. Disconnecting from instrument."
-                SystemLog.log(systemlog_msg, systemlog_msg, SystemLog::MESSAGE, instr_id)
-                if (@state == Analyzer::DISCONNECTED)
+                System_logs.log(systemlog_msg, systemlog_msg, System_logs::MESSAGE, instr_id)
+                if (@state == Analyzers::DISCONNECTED)
                     $logger.debug "#Do Nothing"
                     #Do Nothing
-                elsif (@state == Analyzer::CONNECTED)
+                elsif (@state == Analyzers::CONNECTED)
                     disconn_instr()
-                elsif (@state == Analyzer::INGRESS)
+                elsif (@state == Analyzers::INGRESS)
                     stop_ingress()
                     disconn_instr()
-                elsif (@state == Analyzer::DOWNSTREAM)
+                elsif (@state == Analyzers::DOWNSTREAM)
                     stop_performance()
                     disconn_instr()
                 else
                     systemlog_msg="Unrecognized State: #{@state}"
-                    SystemLog.log(systemlog_msg, systemlog_msg, SystemLog::WARNING, instr_id)
+                    System_logs.log(systemlog_msg, systemlog_msg, System_logs::WARNING, instr_id)
                 end
-                if (current_state.eql?(Analyzer::CONNECTED) || current_state.eql?(Analyzer::INGRESS) || current_state.eql?(Analyzer::DOWNSTREAM))
-                    disconnect_snmp_trap(@instr_id, 2, Analyzer::DISCONNECTED)
+                if (current_state.eql?(Analyzers::CONNECTED) || current_state.eql?(Analyzers::INGRESS) || current_state.eql?(Analyzers::DOWNSTREAM))
+                    disconnect_snmp_trap(@instr_id, 2, Analyzers::DISCONNECTED)
                 end
             elsif (cmd == SHUTDOWN)
                 shutdown()
             else
                 systemlog_msg= "command #{cmd} are not handled."
-                SystemLog.log(systemlog_msg, systemlog_msg, SystemLog::WARNING, instr_id)
+                System_logs.log(systemlog_msg, systemlog_msg, System_logs::WARNING, instr_id)
             end
         rescue Mysql::Error => ex
             $logger.debug "Mysql Error #{ex.message}"
@@ -771,13 +770,13 @@ class Monitor
     def build_task_queues()
         puts "build task queue"
         task_queues = []
-        if (@state == Analyzer::INGRESS)
+        if (@state == Analyzers::INGRESS)
             task = IngressTask.new(@instr_obj)
 
             task_queues << [task]
             #@instr_obj.monitor()
-        elsif (@state == Analyzer::DOWNSTREAM)
-            analyzer=Analyzer.find_by_ip(@instr_ip)
+        elsif (@state == Analyzers::DOWNSTREAM)
+            analyzer=Analyzers.find_by_ip(@instr_ip)
 
             q_tasks=build_detect_channel_drops_tasks(analyzer)
             task_queues << q_tasks if !q_tasks.nil? and !q_tasks.empty?
@@ -799,7 +798,7 @@ class Monitor
                 ch.cfg_channel_tests.each { |step|
 
                     #CmdQueue.instance.process_command_queue(self)
-                    if (@state != Analyzer::DOWNSTREAM)
+                    if (@state != Analyzers::DOWNSTREAM)
                         return
                     end
                     $logger.debug "#{step.inspect} steps."
@@ -824,7 +823,7 @@ class Monitor
     def state=(state)
         unless @engine.nil?
             if @state != state
-                if state != Analyzer::INGRESS && state != Analyzer::DOWNSTREAM
+                if state != Analyzers::INGRESS && state != Analyzers::DOWNSTREAM
                     @engine.stop
                 end
             end
@@ -878,7 +877,7 @@ class Monitor
 
         @engine.post_run = lambda do |task|
             $logger.debug "Instrument check."
-            instr = Analyzer.find(@instr_id)
+            instr = Analyzers.find(@instr_id)
             if instr.nil?
                 $logger.debug "Instrument has been deleted."
                 @engine.stop_no_waiting()
@@ -886,7 +885,7 @@ class Monitor
             end
             if instr.status != @state
                 instr.update_attributes({ :status => @state, :processing => nil })
-                if @state == Analyzer::INGRESS
+                if @state == Analyzers::INGRESS
                     refresh_live_trace()
                 end
             end
@@ -899,11 +898,11 @@ class Monitor
                 begin
                     #$logger.info "My STATE is #{@state}, My ID is #{@instr_id}"
                     #$logger.debug "Command Thread is #{cmd_thread.status}"
-                    if Sticky_ID != -1 && Region.find(Analyzer.find(@instr_id).region_id).server_id != Sticky_ID
+                    if Sticky_ID != -1 && Regions.find(Analyzers.find(@instr_id).region_id).server_id != Sticky_ID
                         exit
                     end
                     CmdQueue.instance.process_command_queue(self)
-                    instr=Analyzer.find(@instr_id)
+                    instr=Analyzers.find(@instr_id)
                     if instr.nil?
                         @logger.debug "Instrument has been deleted."
                         @engine.stop()
@@ -912,7 +911,7 @@ class Monitor
                     keep_alive(instr.id)
                     if (instr.status != @state)
                         instr.update_attributes({ :status => @state, :processing => nil })
-                        if @state==Analyzer::INGRESS
+                        if @state==Analyzers::INGRESS
                             refresh_live_trace()
                         end
                     end
@@ -970,7 +969,7 @@ class Monitor
             begin
                 $logger.debug "Restart analyzer #{instr.att_count}"
                 #$logger.debug caller.inspect()
-                SystemLog.log("Restart analyzer,while Auto connect is runing at #{instr.att_count + 1} times", "This is the #{instr.att_count + 1} times connect.", SystemLog::RECONNECT, @instr_id)
+                System_logs.log("Restart analyzer,while Auto connect is runing at #{instr.att_count + 1} times", "This is the #{instr.att_count + 1} times connect.", System_logs::RECONNECT, @instr_id)
                 reset_analyzer()
                     #$logger.debug "no Mysql Error"
             rescue => ex
@@ -1017,7 +1016,7 @@ def command_parser(sock, state)
         response.keep_alive=false
         if (args.last == 'MEASURE')
             @thread_lock.synchronize {
-                $logger.debug "Recved a Measure Command"
+                $logger.debug "Recved a Measures Command"
                 #TODO MUSTBE IN CONNECTED MODE TO DO THIS
                 #"0" => {:str=> "QPSK" ,:qam=>false, :analog=>false, :dcp=>true }
                 #def measure_dcp(freq,bandwidth, attenuator)
@@ -1026,7 +1025,7 @@ def command_parser(sock, state)
                 response.body=nil
                 query=request.query
                 #Verify both modulation, frequency and bandwidth exist.
-                if (state!=Analyzer::CONNECTED)
+                if (state!=Analyzers::CONNECTED)
                     response.body="FAIL:Not Connected please place instrument in connected mode  #{state}."
                 elsif (!query.key?("idx"))
                     response.body="FAIL:Need Data Index"
@@ -1041,7 +1040,7 @@ def command_parser(sock, state)
                     if (query.key?("switch_port_id"))
                         #Do nothing I assume we have a 'no switch' situation here.
                         swp_id=query["switch_port_id"].to_i
-                        port=SwitchPort.find(swp_id)
+                        port=Switch_ports.find(swp_id)
                         @instr_obj.session.set_switch(port.get_calculated_port())
                         site=port.get_site()
                     end #End switch port key
@@ -1129,7 +1128,7 @@ def command_parser(sock, state)
                                         end
                                     end
 
-                                    meas_rec = Measure.get_id(m_key)
+                                    meas_rec = Measures.get_id(m_key)
                                     divisor = meas_rec.divisor if not meas_rec.nil?
                                     #puts "#{ky}=#{measurements[ky].to_f };"
                                     results += "#{ky}=#{measurements[ky].to_f / divisor };"
@@ -1178,25 +1177,25 @@ def command_parser(sock, state)
 end
 
 def flag_datalog(instrument_id)
-    $logger.info "Flagging Datalog"
+    $logger.info "Flagging Datalogs"
     $monitor_obj.instr_obj.datalog_flag=true
 end
 
 def update_status(prefix, pos, total, instr_id)
-    SystemLog.log("#{prefix} #{(pos.to_f/total.to_f*100.0).to_i}% complete ", "", SystemLog::PROGRESS, instr_id)
-    instr = Analyzer.find(instr_id)
+    System_logs.log("#{prefix} #{(pos.to_f/total.to_f*100.0).to_i}% complete ", "", System_logs::PROGRESS, instr_id)
+    instr = Analyzers.find(instr_id)
     instr.update_attributes(:processing => Time.now)
 end
 
 def deactivate_analyzer_alarms(instr)
     instr.get_all_sites().each { |site|
-        Alarm.deactivate(site.id)
-        score_alarm=Alarm.find(:first, :conditions => ["site_id=? and active=TRUE and alarm_type=13", site.id])
+        Alarms.deactivate(site.id)
+        score_alarm=Alarms.find(:first, :conditions => ["site_id=? and active=TRUE and alarm_type=13", site.id])
         if !score_alarm.nil?
             score_alarm[:active]=0
             score_alarm.save
         end
-        DownAlarm.deactivate(site.id)
+        Down_alarms.deactivate(site.id)
     }
 end
 
@@ -1206,11 +1205,11 @@ def sleep_it(secs)
 end
 
 def exception_proc(e, instrument_id, _ensure = false)
-    instr=Analyzer.find(instrument_id)
+    instr=Analyzers.find(instrument_id)
     if e.is_a? SunriseError
 
         $logger.error "Sunrise Error - #{e.message}"
-        SystemLog.log(e.message, e.backtrace(), SystemLog::EXCEPTION, instrument_id)
+        System_logs.log(e.message, e.backtrace(), System_logs::EXCEPTION, instrument_id)
         $logger.error e.backtrace()
         begin
             $monitor_obj.close_instr_command_io()
@@ -1224,7 +1223,7 @@ def exception_proc(e, instrument_id, _ensure = false)
 
     elsif e.is_a? ProtocolError
         $logger.error "Protocol Error - #{e.message}"
-        SystemLog.log(e.message, e.backtrace(), SystemLog::EXCEPTION, instrument_id)
+        System_logs.log(e.message, e.backtrace(), System_logs::EXCEPTION, instrument_id)
         $logger.error e.backtrace()
         begin
             $monitor_obj.close_instr_command_io()
@@ -1238,7 +1237,7 @@ def exception_proc(e, instrument_id, _ensure = false)
 
     else
 
-        SystemLog.log("UNKNOWN ERROR #{e.message}", "#{e.message}\n"+e.backtrace().to_s, SystemLog::EXCEPTION, instrument_id)
+        System_logs.log("UNKNOWN ERROR #{e.message}", "#{e.message}\n"+e.backtrace().to_s, System_logs::EXCEPTION, instrument_id)
         $logger.error e.message
         $logger.error e.backtrace
         begin
@@ -1275,25 +1274,25 @@ def ensure_exp(instrument_id)
                 $logger.debug le.backtrace
             end
         end
-        instr=Analyzer.find(instrument_id)
+        instr=Analyzers.find(instrument_id)
         current_status = instr.status
-        instr.update_attributes({:status => Analyzer::DISCONNECTED, :processing => nil})
+        instr.update_attributes({:status => Analyzers::DISCONNECTED, :processing => nil})
         begin
             $monitor_obj.shutdown
         rescue => e
             $logger.debug e.backtrace
         end
         if instr.auto_mode == 3
-            disconnect_snmp_trap(instr.id, 1, current_status) if current_status != Analyzer::DISCONNECTED
+            disconnect_snmp_trap(instr.id, 1, current_status) if current_status != Analyzers::DISCONNECTED
         else
             if instr.att_count < 9
                 instr.update_attributes(:att_count => instr.att_count+1)
                 $monitor_obj.autoconnect_restart(instr)
             else
                 instr.update_attributes({:att_count => -1, :auto_mode => 3})
-                monitor_type = instr.auto_mode.eql?(1) ? Analyzer::INGRESS : Analyzer::DOWNSTREAM
+                monitor_type = instr.auto_mode.eql?(1) ? Analyzers::INGRESS : Analyzers::DOWNSTREAM
                 disconnect_snmp_trap(instr.id, 0, monitor_type)
-                SystemLog.log("Auto connect Mode shut down as auto connect failed.", "Auto Connect have already try 9 times. But Failed, then give up Auto Connect.", SystemLog::RECONNECT, instr.id)
+                System_logs.log("Auto connect Mode shut down as auto connect failed.", "Auto Connect have already try 9 times. But Failed, then give up Auto Connect.", System_logs::RECONNECT, instr.id)
             end
         end
     rescue => ex
@@ -1308,10 +1307,10 @@ def ensure_exp(instrument_id)
 end
 
 def disconnect_snmp_trap(instr_id, desc_index, monitor_type)
-    instr=Analyzer.find(instr_id)
+    instr=Analyzers.find(instr_id)
     return if !instr.snmp_active
-    counter=ConfigParam.increment("SNMP Sequence Counter")
-    snmp_mgr_list=ConfigParam.find(:all, :conditions => {:category => "SNMP"})
+    counter=Config_params.increment("SNMP Sequence Counter")
+    snmp_mgr_list=Config_params.find(:all, :conditions => {:category => "SNMP"})
     desc=[{:trap_type => 15, :desc => "Auto connect failed,analyzer #{instr.name} is disconnected."},
           {:trap_type => 15, :desc => "Analyzer #{instr.name} is disconnected."},
           {:trap_type => 11, :desc => "Analyzer #{instr.name} is disconnected by manual."},
@@ -1326,7 +1325,7 @@ end
 
 begin
     $logger.debug "----------------monitor start as id = #{instrument_id},cmd_port = #{cmd_port},pid = #{Process.pid}--------------------------"
-    instr = Analyzer.find(instrument_id)
+    instr = Analyzers.find(instrument_id)
     keep_alive(instr.id)
     unless instr.update_attributes({:pid => Process.pid})
         $logger.debug "RYAN#{instr.errors.full_messages}"
@@ -1334,14 +1333,14 @@ begin
     deactivate_analyzer_alarms(instr)
     $monitor_obj = Monitor.new(instrument_id, cmd_port, is_debug)
     #If analyzer was in downstream or ingress monitoring then restore that monitoring mode on restart.
-    if (instr.status == Analyzer::DOWNSTREAM)
+    if (instr.status == Analyzers::DOWNSTREAM)
         $logger.debug "Add To Queue Downstream"
         CmdQueue.instance.addto_queue(Monitor::DOWNSTREAM)
-    elsif (instr.status == Analyzer::INGRESS)
+    elsif (instr.status == Analyzers::INGRESS)
         $logger.debug "Add To Queue INGRESS"
         CmdQueue.instance.addto_queue(Monitor::INGRESS)
     else
-        instr.update_attributes({ :status => Analyzer::DISCONNECTED, :processing => nil })
+        instr.update_attributes({ :status => Analyzers::DISCONNECTED, :processing => nil })
 #    $monitor_obj.addto_queue(Monitor::MAINT)
         CmdQueue.instance.addto_queue(Monitor::AUTOCO)
     end

@@ -52,8 +52,8 @@ class Instrument
                 @command_io.fcntl(Fcntl::FD_CLOEXEC, 1)
             end
         rescue => ex
-            analyzer=Analyzer.find_by_ip(@ip)
-            SystemLog.log(ex.message, ex.message + "\n"+ex.backtrace().inspect(), SystemLog::ERROR, analyzer.id)
+            analyzer=Analyzers.find_by_ip(@ip)
+            System_logs.log(ex.message, ex.message + "\n"+ex.backtrace().inspect(), System_logs::ERROR, analyzer.id)
             @logger.warn("TCPServer Error: #{ex}") if @logger
             @logger.error ex.inspect()
             @logger.debug ex.backtrace()
@@ -80,7 +80,7 @@ class Instrument
         svr_crc32=result.msg_object()['crc32'].to_i
         if (crc32!=svr_crc32)
             msg="Hardware.cfg #{crc32} != #{svr_crc32}"
-            SystemLog.log(msg, msg, SystemLog::MESSAGE, analyzer.id)
+            System_logs.log(msg, msg, System_logs::MESSAGE, analyzer.id)
             @session.upload_file(file_path, "e:\\hardware.cfg") { |pos, total|
                 update_status("Hardware Config Transfer ", pos, total, analyzer.id)
             }
@@ -91,7 +91,7 @@ class Instrument
     def initialize_instr()
 
         @logger.debug "start initialize_instr"
-        analyzer=Analyzer.find_by_ip(@ip)
+        analyzer=Analyzers.find_by_ip(@ip)
         if (analyzer.nil?)
             raise SunriseError.new("Unable to find analyzer with ip #{@ip}")
         end
@@ -103,7 +103,7 @@ class Instrument
             @prev_mode=cfg_info.get_mode(@ip)
             begin
                 msg="Initializing Second Phase#{@ip}"
-                SystemLog.log(msg, msg, SystemLog::MESSAGE, analyzer.id)
+                System_logs.log(msg, msg, System_logs::MESSAGE, analyzer.id)
                 analyzer.update_attributes({:stage => 1})
                 @logger.debug "before @session.initialize_socket() "
                 @session.initialize_socket()
@@ -114,12 +114,12 @@ class Instrument
                 @logger.debug "Connection Refused, reboot analyzer?"
                 @logger.debug ex.backtrace
                 msg="Connection Refused, reboot analyzer#{@ip}"
-                analyzer=Analyzer.find_by_ip(@ip)
-                SystemLog.log(msg, msg, SystemLog::EXCEPTION, analyzer.id)
+                analyzer=Analyzers.find_by_ip(@ip)
+                System_logs.log(msg, msg, System_logs::EXCEPTION, analyzer.id)
                 raise
             rescue SunriseError => ex
                 @logger.debug "SunriseError in @session.initialize_socket"
-                analyzer.update_attributes({:status => Analyzer::DISCONNECTED, :processing => nil})
+                analyzer.update_attributes({:status => Analyzers::DISCONNECTED, :processing => nil})
                 @logger.debug "Unable to connect, Disconnecting analyzer"
                 raise
             end
@@ -146,8 +146,8 @@ class Instrument
                 @logger.debug("Maybe we should reboot instrument: #{ex}")
                 @logger.debug ex.backtrace
                 large_msg="Maybe we should reboot Instrument #{ex}"
-                analyzer=Analyzer.find_by_ip(@ip)
-                SystemLog.log("Maybe we should reboot Instrument #{ex}", large_msg, SystemLog::EXCEPTION, analyzer.id)
+                analyzer=Analyzers.find_by_ip(@ip)
+                System_logs.log("Maybe we should reboot Instrument #{ex}", large_msg, System_logs::EXCEPTION, analyzer.id)
                 raise
             end
             @logger.debug "@session.login end"
@@ -156,8 +156,8 @@ class Instrument
             sync_analyzer_server_date
             @logger.info "We have Logged into the instrument"
             analyzer.update_attributes({:stage => 3})
-            analyzer=Analyzer.find_by_ip(@ip)
-            SystemLog.log("We have Logged into the instrument", nil, SystemLog::MESSAGE, analyzer.id)
+            analyzer=Analyzers.find_by_ip(@ip)
+            System_logs.log("We have Logged into the instrument", nil, System_logs::MESSAGE, analyzer.id)
             @logger.debug "before get_config from at2500"
             configure_instr(analyzer, get_piddir())
             @logger.debug "after get_config from at2500"
@@ -181,7 +181,7 @@ class Instrument
 
     def get_piddir
         pid=Process.pid
-        analyzer_id=Analyzer.find_by_ip(@ip).id
+        analyzer_id=Analyzers.find_by_ip(@ip).id
         piddir="/tmp/X"+analyzer_id.to_s
         if !File.exist?(piddir)
             @logger.info("Creating Directory. #{piddir}") if @logger
@@ -194,9 +194,9 @@ class Instrument
 
         @logger.debug "start upload_monitoring_file"
         piddir=get_piddir()
-        Analyzer.connection.reconnect!()
+        Analyzers.connection.reconnect!()
         @logger.info "Uploading #{file_type.to_s}"
-        analyzer_id=Analyzer.find_by_ip(@ip).id
+        analyzer_id=Analyzers.find_by_ip(@ip).id
         file_name="monitor."+@build_files[file_type][:ext]
         @logger.info "Filename => #{file_name} for #{file_type.to_s}"
         file_path=CFG_LOC+"/"+file_name
@@ -212,7 +212,7 @@ class Instrument
                 monitor_file.obj_list=
                     MonitorFiles::ScheduleFO::build(analyzer_id)
                 if monitor_file.obj_list.nil?
-                    raise ConfigurationError.new("Problem with Port Schedule. Please Reinitialize")
+                    raise ConfigurationError.new("Problem with Port Schedules. Please Reinitialize")
                 end
             elsif (file_type == :signal)
                 monitor_file.obj_list=
@@ -235,7 +235,7 @@ class Instrument
             rescue ProtocolError => err
                 @logger.debug "ProtocolError with upload_file in upload_monitoring_file"
                 if err.message =~ /Block size is zero/
-                    raise ProtocolError.new("Failure to upload to Analyzer. Hard Disk maybe full.")
+                    raise ProtocolError.new("Failure to upload to Analyzers. Hard Disk maybe full.")
                 else
                     raise
                 end
@@ -266,7 +266,7 @@ class Instrument
     def upload_monitoring_files(piddir, ingress_monitor=true)
 
         @logger.debug "start upload_monitoring_files"
-        analyzer=Analyzer.find_by_ip(@ip)
+        analyzer=Analyzers.find_by_ip(@ip)
         if ingress_monitor
             upload_monitoring_file(:trace_ref, piddir) { |pos, total|
                 update_status("Monitor.ref transfer", pos, total, analyzer.id)
@@ -276,15 +276,15 @@ class Instrument
         upload_monitoring_file(:schedule, piddir) { |pos, total| update_status("Monitor.sch transfer ", pos, total, analyzer.id) }
         upload_monitoring_file(:signal, piddir) { |pos, total| update_status("Monitor.sig transfer ", pos, total, analyzer.id) }
         #upload_stored_files("/tmp/demofiles")
-        Analyzer.connection.reconnect!()
+        Analyzers.connection.reconnect!()
         @logger.debug "end upload_monitoring_files"
     end
 
     def get_settings()
 
         @logger.debug "start get_settings"
-        Analyzer.connection.reconnect!()
-        analyzer=Analyzer.find_by_ip(@ip)
+        Analyzers.connection.reconnect!()
+        analyzer=Analyzers.find_by_ip(@ip)
         @session.set_mode(0)
         @session.set_mode(13)
         analyzer.switches.find(:all).each { |switch|
@@ -309,7 +309,7 @@ class Instrument
     def get_firmware_version()
 
         @logger.debug "start get_firmware_version"
-        analyzer=Analyzer.find_by_ip(@ip)
+        analyzer=Analyzers.find_by_ip(@ip)
         begin
             response=@session.get_firmware_version
             analyzer.firmware_ver=response['hm_firmware_ver'].gsub("\000", "")
@@ -325,7 +325,7 @@ class Instrument
     def init_monitoring()
         @session.flush_alarms()
         @session.flush_stats()
-        @session.flood_config(ConfigParam.get_value(ConfigParam::CYCLE_COUNT), ConfigParam.get_value(ConfigParam::ALARM_FLOOD_THRESHOLD), ConfigParam.get_value(ConfigParam::FLOOD_RESTORE_CYCLE))
+        @session.flood_config(Config_params.get_value(Config_params::CYCLE_COUNT), Config_params.get_value(Config_params::ALARM_FLOOD_THRESHOLD), Config_params.get_value(Config_params::FLOOD_RESTORE_CYCLE))
         @logger.info "start monitoring"
         @session.start_monitoring()
         puts "GET MODE #{@session.get_mode()}"
@@ -334,8 +334,8 @@ class Instrument
         puts "GET MODE #{@session.get_mode()}"
         @logger.info "do working mode"
         @session.set_working_mode(0)
-        Analyzer.connection.reconnect!()
-        analyzer=Analyzer.find_by_ip(@ip)
+        Analyzers.connection.reconnect!()
+        analyzer=Analyzers.find_by_ip(@ip)
         analyzer_id=analyzer.id
         analyzer.reset_ports_nf_grade()
         puts "HMID=#{@hmid}"
@@ -369,26 +369,26 @@ class Instrument
         @logger.debug "start dl_monitor"
         @dlsession.dir_prefix=get_piddir()
         msg_obj=@dlsession.poll_status_monitoring()
-        @logger.info "Poll Datalog #{datalog_flag}"
+        @logger.info "Poll Datalogs #{datalog_flag}"
         while @datalog_flag
             @datalog_flag=false
-            @logger.info "Doing Datalog Transaction"
+            @logger.info "Doing Datalogs Transaction"
             @dlsession.datalogging_transaction()
             datalog_filename="#{get_piddir()}/data.logging.buffer"
             if File.file? datalog_filename
                 bf=BlockFile::BlockFileParser.new()
                 block_list=bf.load(datalog_filename)
                 @logger.debug block_list.first.inspect()
-                Analyzer.connection.reconnect!()
-                analyzer_id=Analyzer.find_by_ip(@ip).id
+                Analyzers.connection.reconnect!()
+                analyzer_id=Analyzers.find_by_ip(@ip).id
                 dbload(block_list, analyzer_id)
                 @last_clear_time = Time.now #reset last clean time ,because insert datalog will clear
             else
                 @logger.error "#{datalog_filename} is not found"
             end
-            @logger.debug "End Doing Datalog Transaction"
+            @logger.debug "End Doing Datalogs Transaction"
         end
-        @logger.info "Poll Datalog Complete"
+        @logger.info "Poll Datalogs Complete"
         @logger.debug "end dl_monitor"
     end
 
@@ -399,7 +399,7 @@ class Instrument
         @logger.info "Loading for #{analyzer_id}"
         test_count=0
         expected_test_count=0
-        analyzer=Analyzer.find(analyzer_id)
+        analyzer=Analyzers.find(analyzer_id)
         swport=nil
         block_list.each { |block|
             block_type=block[:block_type]
@@ -440,19 +440,19 @@ class Instrument
 
                 if (expected_test_count == test_count)
                     tried_count = 0
-                    dl=Datalog.new()
+                    dl=Datalogs.new()
                     dl.ts=Time.at(dlobj[:ts] - Time.now.gmt_offset)
                     dl.ts = adust_dl_time(dl)
                     dl.attenuation=attenuator
                     dl.start_freq=start_freq
                     dl.stop_freq=stop_freq
-                    analyzer=Analyzer.find(analyzer_id)
-                    default_site=Site.find(:first)
+                    analyzer=Analyzers.find(analyzer_id)
+                    default_site=Sites.find(:first)
                     site_id=nil
                     switch_port_id=analyzer.get_switch_port(dlobj[:rptp])
                     @logger.debug("SWITCH PORT: #{dlobj[:rptp]}")
                     if (!switch_port_id.nil?)
-                        swp=SwitchPort.find(switch_port_id)
+                        swp=Switch_ports.find(switch_port_id)
                         if (!swp.nil?)
                             site_id=swp.site_id
                         end
@@ -460,7 +460,7 @@ class Instrument
                     dl.site_id=site_id
 
                     @logger.debug("Noise Floor Calculation")
-                    nf_cal=ConfigParam.find_by_name("Noise Floor Calculation")
+                    nf_cal=Config_params.find_by_name("Noise Floor Calculation")
                     cal_image=nf_cal.nil? ? 1 : nf_cal.val.to_i
                     #@logger.debug("CAL IMAGE #{cal_image.inspect}")
                     dl_image=case cal_image
@@ -471,7 +471,7 @@ class Instrument
                                  when 3 then
                                      dlobj[:max_image]
                              end
-                    dl.noise_floor=Datalog.cal_noise_floor(dl_image, analyzer_id)
+                    dl.noise_floor=Datalogs.cal_noise_floor(dl_image, analyzer_id)
                     sum=0
                     dlobj[:image].each { |val|
                         sum+=val
@@ -491,7 +491,7 @@ class Instrument
                         tried_count += 1
                         if (tried_count <3)
                             sleep_it 2
-                            Datalog.connection.reconnect!()
+                            Datalogs.connection.reconnect!()
                             sleep_it 2
                             retry
                         else
@@ -501,7 +501,7 @@ class Instrument
                     end
                     dl.store_images(dlobj[:min_image], dlobj[:image], dlobj[:max_image])
                     @logger.debug "Running Test Trace Seta"
-                    if (!DatalogProfile.test_trace_set(dl))
+                    if (!Datalog_profiles.test_trace_set(dl))
                         @logger.debug "Failed to run test trace set."
                     else
                         @logger.debug "I have to run test trace set."
@@ -534,20 +534,20 @@ class Instrument
         stat_count=msg_obj['statistic_count']
         alarm_count=msg_obj['alarm_count']
         #@logger.debug "HLEE->#{msg_obj.inspect()} alarm_count are #{alarm_count}"
-        @logger.debug "#{ip} Alarm Count #{msg_obj['alarm_count']}, Stat Count#{msg_obj['statistic_count']},"+
+        @logger.debug "#{ip} Alarms Count #{msg_obj['alarm_count']}, Stat Count#{msg_obj['statistic_count']},"+
                           "Integral Count #{msg_obj['integral_count']},Monitoring Status:#{msg_obj['monitoring_status']}"
         if msg_obj['monitoring_status'] == 69
             if msg_obj['error_nbr'].to_i==240 || msg_obj['error_nbr'].to_i==241
                 msg_switch=@session.get_error_switch()
                 unless msg_switch.nil?
-                    @logger.error "ERROR: #{Analyzer.errcode_lookup(msg_obj['error_nbr'])} on Switch #{msg_switch['switch_idx']}"
+                    @logger.error "ERROR: #{Analyzers.errcode_lookup(msg_obj['error_nbr'])} on Switch #{msg_switch['switch_idx']}"
                     #@logger.debug "This is probably a real error"
-                    raise SunriseError.new("ERROR: #{Analyzer.errcode_lookup(msg_obj['error_nbr'])} on Switch #{msg_switch['switch_idx']}")
+                    raise SunriseError.new("ERROR: #{Analyzers.errcode_lookup(msg_obj['error_nbr'])} on Switch #{msg_switch['switch_idx']}")
                 end
             end
-            @logger.debug "ERROR: #{Analyzer.errcode_lookup(msg_obj['error_nbr'])}"
+            @logger.debug "ERROR: #{Analyzers.errcode_lookup(msg_obj['error_nbr'])}"
             @logger.debug "This is probably a real error"
-            raise SunriseError.new("ERROR: #{Analyzer.errcode_lookup(msg_obj['error_nbr'])}")
+            raise SunriseError.new("ERROR: #{Analyzers.errcode_lookup(msg_obj['error_nbr'])}")
             #@session.clear_monitoring_error()
         end
         alarmed_ports=[]
@@ -556,8 +556,8 @@ class Instrument
             @logger.debug "Initializing time buffer"
             #elsif ((Time.now()>(@dl_ts+DL_PERIOD)))
         else
-            Analyzer.connection.reconnect!()
-            analyzer_id=Analyzer.find_by_ip(@ip).id
+            Analyzers.connection.reconnect!()
+            analyzer_id=Analyzers.find_by_ip(@ip).id
             begin
                 dl_monitor()
                 keep_alive(analyzer_id)
@@ -565,8 +565,8 @@ class Instrument
                 @logger.debug "dl_monitor  #{e.backtrace}"
                 #e=$!
                 $logger.error "Datalogging ERROR #{e.message}"
-                SystemLog.log("Unable to Get Datalog",
-                              e.backtrace(), SystemLog::EXCEPTION, analyzer_id)
+                System_logs.log("Unable to Get Datalogs",
+                              e.backtrace(), System_logs::EXCEPTION, analyzer_id)
                 raise
             end
             @dl_ts=Time.now()
@@ -587,8 +587,8 @@ class Instrument
             msg_obj=alarm_response.msg_obj()
             @logger.debug "ALARM LEVEL #{msg_obj['alarm_level']}"
             step_nbr=msg_obj['step_nbr']
-            schedule=Schedule.find(msg_obj['sn_schedule'].to_i)
-            #if (schedule.return_port_schedule[step_nbr].switch_port.purpose != SwitchPort::RETURN_PATH)
+            schedule=Schedules.find(msg_obj['sn_schedule'].to_i)
+            #if (schedule.return_port_schedule[step_nbr].switch_port.purpose != Switch_ports::RETURN_PATH)
             #puts "skipping  Port #{schedule.return_port_schedule[step_nbr].switch_port.id}"
             #next
             #end
@@ -602,14 +602,14 @@ class Instrument
                 rescue Mysql::Error => ex
                     @logger.debug "Mysql Rescue Count #{rescue_count}"
                     if (rescue_count < 3)
-                        Schedule.connection.reconnect!()
+                        Schedules.connection.reconnect!()
                         retry
                     end
                 rescue Exception => ex
                     @logger.debug "#{ex.message}"
                     @logger.debug "#{ex.backtrace}"
                     if (rescue_count < 3)
-                        Schedule.connection.reconnect!()
+                        Schedules.connection.reconnect!()
                         retry
                     end
                 end
@@ -624,17 +624,17 @@ class Instrument
                 site_id=schedule.return_port_schedule[step_nbr].switch_port.site_id
                 profile_id=schedule.return_port_schedule[step_nbr].switch_port.profile_id
                 if profile_id.nil? || profile_id.eql?(0)
-                    profile_id=Analyzer.find_by_ip(@ip).profile_id
+                    profile_id=Analyzers.find_by_ip(@ip).profile_id
                 end
-                site=Site.find(site_id)
-                profile=Profile.find(profile_id)
+                site=Sites.find(site_id)
+                profile=Profiles.find(profile_id)
                 #@logger.debug @port_settings.inspect()
                 @logger.debug "PORT NUMBER:#{port_nbr}"
                 raise ConfigurationError.new("Cannot find Port  in database") if (port_id.nil?)
                 trace=nil
-                #Build Alarm Record
+                #Build Alarms Record
                 adjust_date_time(msg_obj)
-                alarm=Alarm.generate(
+                alarm=Alarms.generate(
                     :profile_id => profile_id,
                     :site_id => site_id,
                     :sched_sn_nbr => msg_obj['sn_schedule'],
@@ -651,9 +651,9 @@ class Instrument
                     :center_frequency => @port_settings[port_nbr.to_s]['cen_freq'],
                     :span => @port_settings[port_nbr.to_s]['span'],
                     :email => site.analyzer.email,
-                    :alarm_type => Alarm.lvl_at2500_to_rwx(msg_obj['alarm_level'])
+                    :alarm_type => Alarms.lvl_at2500_to_rwx(msg_obj['alarm_level'])
                 )
-                #Get Trace for Alarm
+                #Get Trace for Alarms
                 packed_image_arr=alarm_response.msg_obj()['trace'].unpack('C*')
                 raw_image=Common.parse_image(packed_image_arr)
                 db_constant=70.0/1024.0
@@ -664,17 +664,17 @@ class Instrument
                 alarm.image=processed_image
                 alarm.save()
                 if @active_count["#{site_id}"] < 0
-                    Alarm.deactivate(site_id)
+                    Alarms.deactivate(site_id)
                 end
                 @active_count["#{site_id}"]= @active_count["#{site_id}"]>0 ? 1 : (@active_count["#{site_id}"] + 1)
-                @logger.debug "ALARM Profile trace AGAIN#{alarm.trace.inspect} HLEE_FLAG is #{@active_count["#{site_id}"]}"
+                @logger.debug "ALARM Profiles trace AGAIN#{alarm.trace.inspect} HLEE_FLAG is #{@active_count["#{site_id}"]}"
                 @logger.debug("Response-> Msg Type:#{alarm_response.msg_type} Step Nbr:#{msg_obj['step_nbr']} ")
                 #@logger.debug "HLEE->#{msg_obj.inspect()} alarm_count are #{alarm_count}"
             elsif (msg_obj['alarm_level'] ==255) #FIXME modified alarm level temporarily
                                                  #Clean Alarms
                 @logger.debug("Reset with #{msg_obj['alarm_level']} forsite #{site_id} HLEE_FLAG is #{@active_count["#{site_id}"]}")
                 if @active_count["#{site_id}"] > 0
-                    Alarm.deactivate(site_id)
+                    Alarms.deactivate(site_id)
                 end
                 @active_count["#{site_id}"]= @active_count["#{site_id}"]<0 ? -1 : (@active_count["#{site_id}"] - 1)
             else
@@ -703,7 +703,7 @@ class Instrument
     end
 
     def measure_analog(video_freq, audio_offset, attenuator=nil, va2sep=nil)
-        analyzer=Analyzer.find_by_ip(@ip)
+        analyzer=Analyzers.find_by_ip(@ip)
         keep_alive(analyzer.id)
         @session.set_mode(0) # FIXME WORKAROUND Go into SA mode just to change frequencies
         settings={ "central_freq" => video_freq }
@@ -727,7 +727,7 @@ class Instrument
     end
 
     def measure_ccn(video_freq, attenuator=nil, va2sep=nil)
-        analyzer=Analyzer.find_by_ip(@ip)
+        analyzer=Analyzers.find_by_ip(@ip)
         keep_alive(analyzer.id)
         @session.set_mode(0) # FIXME WORKAROUND Go into SA mode just to change frequencies
         settings={ "central_freq" => video_freq }
@@ -745,7 +745,7 @@ class Instrument
 
 
     def measure_dcp(freq, bandwidth, attenuator)
-        analyzer=Analyzer.find_by_ip(@ip)
+        analyzer=Analyzers.find_by_ip(@ip)
         keep_alive(analyzer.id)
                              #puts @session.inspect()
         @session.set_mode(3) #Go into DCP mode
@@ -763,7 +763,7 @@ class Instrument
     end
 
     def measure_qam(freq, modulation_type, annex, symb_rate, polarity, preber_flag, postber_flag)
-        analyzer=Analyzer.find_by_ip(@ip)
+        analyzer=Analyzers.find_by_ip(@ip)
         keep_alive(analyzer.id)
         puts "In measure QAM"
         @session.set_mode(15) #Go into QAM mode
@@ -806,7 +806,7 @@ class Instrument
             postber=[]
             #qc=lambda { |sock| queue_command(sock)}
             time_begin=Time.now()
-            sample_time=Analyzer.find_by_ip(@ip).sample_time
+            sample_time=Analyzers.find_by_ip(@ip).sample_time
             @logger.debug "START TIMELOOP"
             while ((Time.now-time_begin <= sample_time) && (CmdQueue.instance.empty_queue?))
                 begin
@@ -929,13 +929,13 @@ class Instrument
         cfg_channel_id=step.cfg_channel.id
         freq=step.cfg_channel.freq
         channel_type_nbr= (step.cfg_channel.get_channel_type() == 'Analog' ? 0 : 1)
-        channel_id=Channel.get_chan_id(site_id, freq, channel_type_nbr, step.cfg_channel.modulation, step.cfg_channel.channel)
-        chan=Channel.find(channel_id)
+        channel_id=Channels.get_chan_id(site_id, freq, channel_type_nbr, step.cfg_channel.modulation, step.cfg_channel.channel)
+        chan=Channels.find(channel_id)
         #@logger.debug "ATTEMPTING TO STORE: "
         channel_type=(collected_measurements.key?(:symb_lock) | collected_measurements.key?(:dcp)) ? "Digital" : "Analog"
         collected_measurements.each_key() { |ky|
             next if collected_measurements[ky].nil?
-            meas_rec=Measure.get_id(ky)
+            meas_rec=Measures.get_id(ky)
             #puts "Looking for ${ky} and found ${meas_rec.inspect()}"
             if (!meas_rec.nil?)
                 #STEP 1 ADJUST THE VALUES.  MAYBE WE SHOULD DO THIS IN THE MEASURE MODEL
@@ -958,9 +958,9 @@ class Instrument
                 end
                 val=meas_rec.sanity_max if !meas_rec.sanity_max.nil? && val > meas_rec.sanity_max
                 val=meas_rec.sanity_min if !meas_rec.sanity_min.nil? && val < meas_rec.sanity_min
-                analyzer=Analyzer.find_by_ip(@ip)
+                analyzer=Analyzers.find_by_ip(@ip)
                 #STEP 2 GET THE SITES
-                site=Site.find(site_id)
+                site=Sites.find(site_id)
                 measure_freq = step.get_measurement_freq(meas_rec.sf_meas_ident)
                 #STEP 3 SET THE LIMITS
                 if (step.do_test(meas_rec.sf_meas_ident) && measure_count%measure_freq == 0) #PUT Check Flag in
@@ -972,14 +972,14 @@ class Instrument
                         if  (min_major_val > val.to_f)
                             #@logger.debug "MINALARM"
                             alarm_occurred=true
-                            DownAlarm.generate(site_id,
-                                               external_temp, chan.id, meas_rec.id, val, DownAlarm.error(),
+                            Down_alarms.generate(site_id,
+                                               external_temp, chan.id, meas_rec.id, val, Down_alarms.error(),
                                                min_major_val, channel_type, cfg_channel_id)
                             alarm_occurred=true
                         elsif (min_minor_val > val.to_f)
                             alarm_occurred=true
-                            DownAlarm.generate(site_id,
-                                               external_temp, chan.id, meas_rec.id, val, DownAlarm.warn(),
+                            Down_alarms.generate(site_id,
+                                               external_temp, chan.id, meas_rec.id, val, Down_alarms.warn(),
                                                min_minor_val,
                                                channel_type, cfg_channel_id)
                             alarm_occurred=true
@@ -989,30 +989,30 @@ class Instrument
                         if (max_major_val < val.to_f)
                             #@logger.debug "MAXALARM"
                             alarm_occurred=true
-                            DownAlarm.generate(site_id,
-                                               external_temp, chan.id, meas_rec.id, val, DownAlarm.error(),
+                            Down_alarms.generate(site_id,
+                                               external_temp, chan.id, meas_rec.id, val, Down_alarms.error(),
                                                max_major_val, channel_type, cfg_channel_id)
                         elsif (max_minor_val < val.to_f)
                             alarm_occurred=true
-                            DownAlarm.generate(site_id,
-                                               external_temp, chan.id, meas_rec.id, val, DownAlarm.warn(),
+                            Down_alarms.generate(site_id,
+                                               external_temp, chan.id, meas_rec.id, val, Down_alarms.warn(),
                                                max_minor_val, channel_type, cfg_channel_id)
                         end #major comparison
                     end #IS max_major nil
                     if !alarm_occurred
-                        @logger.debug "Deactivating Alarm for #{site_id}, #{meas_rec.id},#{chan.id}"
-                        DownAlarm.deactivate(site_id, meas_rec.id, chan.id, channel_type, cfg_channel_id)
+                        @logger.debug "Deactivating Alarms for #{site_id}, #{meas_rec.id},#{chan.id}"
+                        Down_alarms.deactivate(site_id, meas_rec.id, chan.id, channel_type, cfg_channel_id)
                     end #Did alarm occur
                 else
                     if (meas_rec.measure_name =~ /_lock$/)
                         if (val.to_f < 1.0) #If lock fail
                             #@logger.debug meas_rec.inspect()
                             #@logger.debug chan.inspect()
-                            DownAlarm.generate(site_id, external_temp, chan.id,
-                                               meas_rec.id, val, DownAlarm::Major, 1, channel_type, cfg_channel_id)
+                            Down_alarms.generate(site_id, external_temp, chan.id,
+                                               meas_rec.id, val, Down_alarms::Major, 1, channel_type, cfg_channel_id)
                         else
-                            @logger.debug "Deactivating lock Alarm for #{site_id}, #{meas_rec.id},#{chan.id}"
-                            DownAlarm.deactivate(site_id, meas_rec.id, chan.id, channel_type, cfg_channel_id)
+                            @logger.debug "Deactivating lock Alarms for #{site_id}, #{meas_rec.id},#{chan.id}"
+                            Down_alarms.deactivate(site_id, meas_rec.id, chan.id, channel_type, cfg_channel_id)
                         end
                     end # If measurement a lock
                 end #Should I do a test
@@ -1021,10 +1021,10 @@ class Instrument
                 # If I am testing measurement or measurement is a lock then store
                 if (measure_count%measure_freq == 0 && (step.do_test(meas_rec.sf_meas_ident) ||
                     (meas_rec.measure_name =~ /_lock$/)))
-                    iter=Measurement.maximum(:iteration,
+                    iter=Measurements.maximum(:iteration,
                                              :conditions => ["site_id=?", site.id])||0
                     iter +=1
-                    measurement=Measurement.new(:site_id => site_id,
+                    measurement=Measurements.new(:site_id => site_id,
                                                 :measure_id => meas_rec.id,
                                                 :channel_id => channel_id, :value => val.to_f,
                                                 :dt => meas_time, :iteration => iter,
@@ -1039,7 +1039,7 @@ class Instrument
             end
         }
         unless video_level.nil? or va_ratio.nil?
-            measurement=Measurement.new(:site_id => video_level[:site_id],
+            measurement=Measurements.new(:site_id => video_level[:site_id],
                                         :measure_id => 17,
                                         :channel_id => video_level[:channel_id],
                                         :value => video_level[:value]+va_ratio[:value],

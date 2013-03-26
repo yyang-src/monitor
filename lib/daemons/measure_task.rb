@@ -51,7 +51,7 @@ class MeasureTask < Task
         else
             #Change the switch to the step's port.
             puts "set switch"
-            port=SwitchPort.find(@step.switch_port_id)
+            port=Switch_ports.find(@step.switch_port_id)
             @main_obj.instr_obj.session.set_switch(port.get_calculated_port())
             site=port.get_site()
         end
@@ -93,7 +93,7 @@ class MeasureTask < Task
                     return unless tmpmeas
                     measurements.merge!(tmpmeas)
                     if (!tmpmeas.nil? && tmpmeas[:symb_lock]==1)
-                        ct=Constellation.new(:dt => Time.now, :site_id => site.id, :image_data => tmpmeas[:points], :freq => @anl_ch.freq)
+                        ct=Constellations.new(:dt => Time.now, :site_id => site.id, :image_data => tmpmeas[:points], :freq => @anl_ch.freq)
                         ct.save()
                     end
                 end

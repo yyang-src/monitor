@@ -67,8 +67,8 @@ class QuickScanTask < Task
         return saved_trace
     end
 
-    def save_trace(trace_image, save_time, type = DownstreamTrace::CYCLE_SAVE)
-        dt = DownstreamTrace.create(
+    def save_trace(trace_image, save_time, type = Downstream_traces::CYCLE_SAVE)
+        dt = Downstream_traces.create(
             :save_time => save_time,
             :site_id => site.id,
             :analyzer_id => analyzer.id,
@@ -230,27 +230,27 @@ class QuickScanTask < Task
             end
             channel_type_nbr=cfg_channel.get_channel_type()
             channel_type =  channel_type_nbr == 'Analog' ? '0' : '1'
-            chl_id = Channel.get_chan_id(@site.id, cfg_channel.freq, channel_type,
+            chl_id = Channels.get_chan_id(@site.id, cfg_channel.freq, channel_type,
                                          cfg_channel.modulation, cfg_channel.channel)
-            meas_id = Measure.find_by_sf_meas_ident(Measure::RF_LEVEL_DROP).id
+            meas_id = Measures.find_by_sf_meas_ident(Measures::RF_LEVEL_DROP).id
             downstream_setting=@analyzer.downstream_setting
             key = "#{@site.id}-#{chl_id}"
             if level_offset > 0
               touched_alarm = false
                 if level_offset > downstream_setting.lvl_drop_cri
-                    alarm_level   = DownAlarm.critical
+                    alarm_level   = Down_alarms.critical
                     alarm_limit   = level_nominal-downstream_setting.lvl_drop_cri
                     touched_alarm = true
                 elsif level_offset > downstream_setting.lvl_drop_maj
-                    alarm_level   = DownAlarm.error
+                    alarm_level   = Down_alarms.error
                     alarm_limit   = level_nominal-downstream_setting.lvl_drop_maj
                     touched_alarm = true
                 elsif level_offset > downstream_setting.lvl_drop_nor
-                    alarm_level   = DownAlarm.normal
+                    alarm_level   = Down_alarms.normal
                     alarm_limit   = level_nominal-downstream_setting.lvl_drop_nor
                     touched_alarm = true
                 elsif level_offset > downstream_setting.lvl_drop_min
-                    alarm_level   = DownAlarm.warn
+                    alarm_level   = Down_alarms.warn
                     alarm_limit   = level_nominal-downstream_setting.lvl_drop_min
                     touched_alarm = true
                 end
@@ -267,16 +267,16 @@ class QuickScanTask < Task
             end
 
             if @detect_active_count[key].nil? or @detect_active_count[key] < downstream_setting.lvl_drop_times
-                DownAlarm.deactivate(@site.id, meas_id, chl_id, nil, cfg_channel.id)
+                Down_alarms.deactivate(@site.id, meas_id, chl_id, nil, cfg_channel.id)
             else
                 last_good_trace_id = @last_good_trace_ids[key]
-                active_alarm = DownAlarm.getActive(@site.id, meas_id, chl_id)
+                active_alarm = Down_alarms.getActive(@site.id, meas_id, chl_id)
                 if active_alarm.nil?
-                    trace_id = save_trace(test_image, trace_time, DownstreamTrace::ALARM_SAVE).id
+                    trace_id = save_trace(test_image, trace_time, Downstream_traces::ALARM_SAVE).id
                 else
                     trace_id = active_alarm.alarm_trace_id
                 end
-                DownAlarm.generate(@site.id, 35, chl_id, meas_id, level_val, alarm_level,
+                Down_alarms.generate(@site.id, 35, chl_id, meas_id, level_val, alarm_level,
                                    alarm_limit, channel_type_nbr, item[:cfg_channel].id,
                                    last_good_trace_id, trace_id,level_nominal,bandwidth)
             end
